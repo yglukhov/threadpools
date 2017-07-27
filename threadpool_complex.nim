@@ -79,7 +79,7 @@ proc finalize(tp: ThreadPool) =
     tp.cleanupAux()
     tp.chanFrom.close()
 
-proc step(args: ThreadProcArgs, idx: int): bool =
+proc step(args: ThreadProcArgs, idx: int): bool {.inline.} =
     let m = args.chansTo[idx][].tryRecv()
     if m.dataAvailable:
         m.msg.action(m.msg, args.chanFrom)
@@ -93,46 +93,32 @@ proc threadProc(args: ThreadProcArgs) {.thread.} =
                 break
             m.action(m, args.chanFrom)
     else:
-        var threadToStealFrom = args.thisThread
-        template nextThreadToStealFrom(): int =
-            threadToStealFrom = random(args.totalThreads)
-            # threadToStealFrom = (threadToStealFrom * threadToStealFrom) mod args.totalThreads
-            # if threadToStealFrom == args.thisThread:
-            #     if threadToStealFrom == args.totalThreads - 1:
-            #         dec threadToStealFrom
-            #     else:
-            #         inc threadToStealFrom
-            threadToStealFrom
+        randomize(args.thisThread)
 
-        block outer:
-            while true:
-                var t = args.thisThread
-                var success = false
-                for i in 0 ..< 4:
-                    if not step(args, t):
-                        t = nextThreadToStealFrom()
-                    else:
-                        success = true
-                        break
-                if not success:
-                    args.taskLock[].acquire()
-                    let m = args.chansTo[args.thisThread][].tryRecv()
-                    if m.dataAvailable:
-                        args.taskLock[].release()
-                        m.msg.action(m.msg, args.chanFrom)
-                    elif args.isComplete[]:
-                        args.taskLock[].release()
-                        break
-                    else:
-                        #echo args.thisThread, ": wait"
-                        inc args.numWaitingThreads[]
-                        args.taskCond[].wait(args.taskLock[])
-                        dec args.numWaitingThreads[]
-                        let comp = args.isComplete[]
-                        #echo args.thisThread, ": complete: ", comp
-                        args.taskLock[].release()
-                        if comp:
-                            break
+    var hits = 0
+    while true:
+        var threadToStealFrom = args.thisThread
+        var success = false
+        for i in 0 ..< 4:
+            if likely step(args, threadToStealFrom):
+                success = true
+                break
+            else:
+                threadToStealFrom = random(args.totalThreads)
+        if not success:
+            args.taskLock[].acquire()
+            let m = args.chansTo[args.thisThread][].tryRecv()
+            if m.dataAvailable:
+                args.taskLock[].release()
+                m.msg.action(m.msg, args.chanFrom)
+            elif args.isComplete[]:
+                args.taskLock[].release()
+                break
+            else:
+                inc args.numWaitingThreads[]
+                args.taskCond[].wait(args.taskLock[])
+                dec args.numWaitingThreads[]
+                args.taskLock[].release()
 
     deallocHeap(true, false)
 
@@ -310,272 +296,3 @@ proc read*[T](v: FlowVar[T]): T =
     while not v.isComplete:
         v.tp.nextMessage()
     result = v.v
-
-when isMainModule:
-    import os
-
-    type Foo = ref object
-
-    proc finalize(f: Foo) =
-        echo "foo finalized"
-
-    block:
-        proc helloWorld(a: int): int =
-            return 123 + a
-
-        let tp = newThreadPool(4)
-        const numCalcs = 100
-        var results = newSeq[FlowVar[int]](numCalcs)
-        for i in 0 ..< numCalcs:
-            results[i] = tp.spawnFV helloWorld(i)
-
-        for i in 0 ..< numCalcs:
-            assert(results[i].read() == 123 + i)
-
-    block:
-        var ga = 0
-        proc helloWorld(a: int) =
-            atomicInc(ga)
-            sleep(300)
-
-        let tp = newThreadPool(1)
-        const numCalcs = 10
-        for i in 0 ..< numCalcs:
-            tp.spawn helloWorld(i)
-        tp.sync()
-        assert ga == numCalcs
-
-    echo "done"
-
-    # tp.cleanup()
-
-    # for j in 0 ..< 100:
-    #     GC_fullCollect()
-    #     let tp = newThreadPool(4)
-    #     for i in 0 ..< 4:
-    #         tp.spawn helloWorld(i)
-    #         tp.spawn helloWorld1(i)
-        # sleep(2000)
-
-
-# proc foo() =
-#     try:
-#         foo_try()
-#     except:
-#         foo_except()
-#     finally:
-#         foo_finally()
-
-# foo()
-
-# const
-#     SmallMinSize = 16
-#     SmallMaxSize = 256
-#     PageSize = 128 * 1024
-
-# type
-#     Page = ptr object
-#         nextPage: Page
-#         typ: int16
-#         nextFreeObj: int16
-#         totalObjects: int16
-
-# proc mmap(p: pointer, len: csize, prot: cint, flags: cint, fd: cint, offset: csize): pointer {.importc, nodecl.}
-# proc munmap(p: pointer, sz: cint): cint {.importc, nodecl.}
-# proc getpagesize(): cint {.importc.}
-
-# const
-#     PROT_READ = cint(0x1)
-#     PROT_WRITE = cint(0x2)
-#     PROT_EXEC = cint(0x4)
-#     PROT_NONE = cint(0x0)
-
-# var MAP_ANONYMOUS {.importc: "MAP_ANONYMOUS", header: "<sys/mman.h>".}: cint
-# var MAP_PRIVATE {.importc: "MAP_PRIVATE", header: "<sys/mman.h>".}: cint
-
-
-# var myerrno {.importc: "errno", header: "<errno.h>".}: cint ## error variable
-
-# proc strerror(errnum: cint): cstring {.importc.}
-
-
-# proc allocPages(count: cint): Page =
-#     # mmap returns pointer aligned to system page size which is normally less
-#     # than PageSize. That is why we mmap 2 pages more than needed, to get
-#     # PageSize-aligned pointer and munmap all the rest
-
-#     result = cast[Page](mmap(nil, PageSize * (count + 2), PROT_READ or PROT_WRITE, MAP_ANONYMOUS or MAP_PRIVATE, -1, 0))
-
-#     #echo "mmapped: ", cast[uint](result)
-
-# #    echo "Errno: ", myerrno, ": ", strerror(myerrno)
-
-#     assert(cast[uint](result) != cast[uint](-1))
-
-#     #echo "offset into: ", (cast[uint](PageSize) - cast[uint](result) mod PageSize)
-
-#     let alignedStart = cast[uint](result) + (cast[uint](PageSize) - cast[uint](result) mod PageSize)
-#     if unlikely cast[uint](result) == alignedStart:
-#         #echo "result aligned"
-#         # result is properly aligned. munmap the tail
-#         discard munmap(cast[pointer](cast[uint](result) + PageSize), PageSize * (count + 1))
-#     else:
-#         #echo "alignedStart: ", alignedStart
-#         # aligned pointer is in the middle.
-#         # munmap front
-#         discard munmap(result, cast[cint](alignedStart - cast[uint](result)))
-#         # munmap tail
-#         let pend = cast[uint](result) + cast[uint](PageSize * (count + 1))
-#         discard munmap(cast[pointer](alignedStart + PageSize), cast[cint](pend - alignedStart))
-#         result = cast[Page](alignedStart)
-
-#     assert(cast[uint](result) mod PageSize == 0)
-
-
-# proc isSmallSize(sz: int): bool = sz <= SmallMaxSize
-
-# template offset(objectSize: int16): int16 =
-#     SmallMaxSize
-
-# proc pageCapacity(objectSize: int16): int16 {.inline.} =
-#     int16((PageSize - offset(objectSize)) div objectSize)
-
-# proc capacity(p: Page): int16 = pageCapacity(p.typ)
-
-# proc getPage(p: pointer): Page =
-#     result = cast[Page](cast[uint](p) - (cast[uint](p) mod PageSize))
-
-# var nextFree16: Page
-
-# proc pointerAtIndex(p: Page, i: int): pointer =
-#     cast[pointer](cast[uint](p) + cast[uint](offset(p.typ) + i * p.typ))
-
-# proc allocSmallPage(): Page =
-#     result = allocPages(1)
-#     echo "allocSmallPage ", cast[int](result)
-#     result.nextPage = nil
-#     result.typ = 16
-#     result.nextFreeObj = 0
-#     result.totalObjects = 0
-#     let first = cast[ptr int16](result.pointerAtIndex(0))
-#     first[] = -1
-
-# proc deallocSmallPage(p: Page) =
-#     discard munmap(p, PageSize)
-
-# proc allocSmall16(): pointer =
-#     if nextFree16.isNil:
-#         nextFree16 = allocSmallPage()
-
-# #    echo "Allocating obj ", nextFree16.nextFreeObj
-#     result = nextFree16.pointerAtIndex(nextFree16.nextFreeObj)
-#     let follow = cast[ptr int16](result)[]
-#     if follow == -1:
-#         inc nextFree16.nextFreeObj
-#         let p = nextFree16.pointerAtIndex(nextFree16.nextFreeObj)
-#         cast[ptr int16](p)[] = -1
-#     else:
-#         nextFree16.nextFreeObj = follow
-#     inc nextFree16.totalObjects
-#     if nextFree16.totalObjects == pageCapacity(16) - 1:
-#         nextFree16 = nil
-
-# proc indexOfPointer(page: Page, p: pointer): int16 =
-#     cast[int16](cast[uint](p) - cast[uint](page) - cast[uint](offset(page.typ))) div page.typ
-
-# proc deallocSmall16(page: Page, p: pointer) =
-#     let p = cast[ptr int16](p)
-#     p[] = page.nextFreeObj
-#     let i = page.indexOfPointer(p)
-# #    echo "Freeing object ", i
-#     page.nextFreeObj = i
-#     dec page.totalObjects
-#     if nextFree16.isNil:
-#         nextFree16 = page
-#     elif page.totalObjects == 0 and nextFree16 != page:
-#         deallocSmallPage(page)
-
-# proc roundSmallSize(sz: int): int =
-#     if sz <= 16: return 16
-#     if sz <= 32: return 32
-#     if sz <= 64: return 64
-#     if sz <= 128: return 128
-#     return 256
-
-# proc allocSmall(sz: int): pointer =
-#     let sz = roundSmallSize(sz)
-#     if sz == 16: result = allocSmall16()
-#     else:
-#         assert(false)
-
-# proc qmalloc(sz: int): pointer =
-#     if isSmallSize(sz):
-#         result = allocSmall(sz)
-#     else:
-#         assert(false)
-# #        allocBig(sz)
-
-# proc qfree(p: pointer) =
-#     let page = p.getPage()
-#     if isSmallSize(page.typ):
-#         if page.typ == 16: page.deallocSmall16(p)
-#         else:
-#             assert(false)
-#     else:
-#         assert(false)
-
-# when isMainModule:
-#     import random, times
-
-#     proc c_malloc(sz: csize): pointer {.importc: "malloc".}
-#     proc c_free(p: pointer) {.importc: "free".}
-
-#     template testAllocator(alloc: untyped, dealloc: untyped) =
-#         block:
-#             let count = 300
-#             var pointers = newSeq[ptr int16](count)
-
-#             for i in 0 .. 10000000:
-#                 let j = random(count)
-#                 let val = int16(j.float * 2.2)
-
-#                 if not pointers[j].isNil:
-#                     assert(pointers[j][] == val)
-#                     dealloc(pointers[j])
-#                 pointers[j] = cast[ptr int16](alloc(16))
-#                 pointers[j][] = val
-
-#     template bench(name: string, b: untyped) =
-#         block:
-#             stdout.write("Running ")
-#             stdout.write(name)
-#             stdout.write("...")
-#             let s = epochTime()
-#             b
-#             let e = epochTime()
-#             echo " Done: ", e - s
-
-
-#     bench "malloc":
-#         testAllocator(c_malloc, c_free)
-
-#     bench "qmalloc":
-#         testAllocator(qmalloc, qfree)
-
-#     bench "nimalloc":
-#         testAllocator(alloc, dealloc)
-
-
-# import os
-# import imgtools.imgtools
-# import nimPNG
-
-# for f in walkfiles("/Users/yglukhov/Projects/falcon/res/tiledmap/assets/*.png"):
-#     echo "F: ", f
-#     var png = loadPNG32(f)
-
-#     if png.data.len == png.width * png.height * 4:
-#         zeroColorIfZeroAlpha(png.data)
-#         colorBleed(png.data, png.width, png.height)
-
-#     discard savePNG32(f, png.data, png.width, png.height)

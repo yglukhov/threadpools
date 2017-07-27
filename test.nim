@@ -19,14 +19,19 @@ proc simpleCall() =
 
 const iterations = 100000
 
+bench "complex pool - simpleCall":
+    let p = tpc.newThreadPool()
+    for i in 0 ..< iterations:
+        p.spawn simpleCall()
+    p.sync()
+
+doAssert(callsMade == iterations)
+callsMade = 0
+
 bench "simple pool - simpleCall":
     let p = tps.newThreadPool()
     for i in 0 ..< iterations:
         p.spawn simpleCall()
     p.sync()
 
-bench "complex pool - simpleCall":
-    let p = tpc.newThreadPool()
-    for i in 0 ..< iterations:
-        p.spawn simpleCall()
-    p.sync()
+doAssert(callsMade == iterations)

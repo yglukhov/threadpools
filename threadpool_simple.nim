@@ -211,37 +211,3 @@ proc read*[T](v: FlowVar[T]): T =
     while not v.isComplete:
         v.tp.nextMessage()
     result = v.v
-
-when isMainModule:
-    import os
-
-    type Foo = ref object
-
-    proc finalize(f: Foo) =
-        echo "foo finalized"
-
-    block:
-        proc helloWorld(a: int): int =
-            return 123 + a
-
-        let tp = newThreadPool(4)
-        const numCalcs = 100
-        var results = newSeq[FlowVar[int]](numCalcs)
-        for i in 0 ..< numCalcs:
-            results[i] = tp.spawnFV helloWorld(i)
-
-        for i in 0 ..< numCalcs:
-            assert(results[i].read() == 123 + i)
-
-    block:
-        var ga = 0
-        proc helloWorld(a: int) =
-            atomicInc(ga)
-            sleep(300)
-
-        let tp = newThreadPool()
-        const numCalcs = 10
-        for i in 0 ..< numCalcs:
-            tp.spawn helloWorld(i)
-        tp.sync()
-        assert ga == numCalcs
