@@ -96,11 +96,15 @@ proc threadProc(args: ThreadProcArgs) {.thread.} =
         randomize(args.thisThread)
 
     var hits = 0
+    var total = 0
     while true:
         var threadToStealFrom = args.thisThread
         var success = false
-        for i in 0 ..< 4:
+        for i in 0 ..< 2:
             if likely step(args, threadToStealFrom):
+                inc total
+                if i == 0:
+                    inc hits
                 success = true
                 break
             else:
@@ -111,6 +115,7 @@ proc threadProc(args: ThreadProcArgs) {.thread.} =
             if m.dataAvailable:
                 args.taskLock[].release()
                 m.msg.action(m.msg, args.chanFrom)
+                inc total
             elif args.isComplete[]:
                 args.taskLock[].release()
                 break
@@ -119,6 +124,8 @@ proc threadProc(args: ThreadProcArgs) {.thread.} =
                 args.taskCond[].wait(args.taskLock[])
                 dec args.numWaitingThreads[]
                 args.taskLock[].release()
+
+    echo "thread: ", args.thisThread, " total: ", total, ", hits: ", hits, ", misses: ", total - hits
 
     deallocHeap(true, false)
 
@@ -205,8 +212,11 @@ proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) =
         msg.flowVar = flowVar
         c[].send(msg)
 
+var i {.compileTime.} = 0
+
 proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool): NimNode =
-    let msgTypeName = genSym(nskType, "MsgSub")
+    let msgTypeName = genSym(nskType, "MsgSub" & $i)
+    inc i
     let dispatchProcName = genSym(nskProc, "dispatchProc")
     let msgParamIdent = newIdentNode("m")
 

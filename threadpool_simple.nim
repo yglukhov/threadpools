@@ -120,8 +120,11 @@ proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) =
         msg.flowVar = flowVar
         c[].send(msg)
 
+var i {.compileTime.} = 0
+
 proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool): NimNode =
-    let msgTypeName = genSym(nskType, "MsgSub")
+    let msgTypeName = genSym(nskType, "MsgSub" & $i)
+    inc i
     let dispatchProcName = genSym(nskProc, "dispatchProc")
     let msgParamIdent = newIdentNode("m")
 
