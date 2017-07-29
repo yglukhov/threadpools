@@ -116,3 +116,68 @@ block:
         p.sync()
 
     assert(totalSleepTime1 == totalSleepTime2)
+
+
+block:
+    let p = tps.newThreadPool()
+
+    proc sleepAndReturnSomeResult(a: int): int =
+        sleep(a)
+        return a + 1
+
+    const randomSeed = 83729
+    var randomGen = newMersenneTwister(randomSeed)
+
+    const randomSleepIterations = 100
+
+    bench "simple pool - awaitAny":
+        let p = tps.newThreadPool()
+        var results = newSeq[tps.FlowVar[int]](randomSleepIterations)
+        for i in 0 ..< randomSleepIterations:
+            let s = randomGen.getNum() mod 300
+            results[i] = p.spawnFV sleepAndReturnSomeResult(s)
+
+        var iResults = newSeq[int](randomSleepIterations)
+
+        iResults[5] = results[5].read()
+        iResults[15] = results[15].read()
+
+        while true:
+            let i = awaitAny(results)
+            if i == -1:
+                break
+            iResults[i] = results[i].read()
+
+        randomGen = newMersenneTwister(randomSeed)
+        for i in 0 ..< randomSleepIterations:
+            let s = randomGen.getNum() mod 300
+            doAssert(iResults[i] == s + 1)
+
+        p.sync()
+
+    randomGen = newMersenneTwister(randomSeed)
+
+    bench "complex pool - awaitAny":
+        let p = tpc.newThreadPool()
+        var results = newSeq[tpc.FlowVar[int]](randomSleepIterations)
+        for i in 0 ..< randomSleepIterations:
+            let s = randomGen.getNum() mod 300
+            results[i] = p.spawnFV sleepAndReturnSomeResult(s)
+
+        var iResults = newSeq[int](randomSleepIterations)
+
+        iResults[5] = results[5].read()
+        iResults[15] = results[15].read()
+
+        while true:
+            let i = awaitAny(results)
+            if i == -1:
+                break
+            iResults[i] = results[i].read()
+
+        randomGen = newMersenneTwister(randomSeed)
+        for i in 0 ..< randomSleepIterations:
+            let s = randomGen.getNum() mod 300
+            doAssert(iResults[i] == s + 1)
+
+        p.sync()

@@ -10,11 +10,13 @@ type
         threads: seq[ThreadType]
         maxThreads: int
 
-    FlowVar*[T] = ref object
+    FlowVarBase = ref object {.inheritable, pure.}
         tp: ThreadPool
+        idx: int # -1 if was never awaited
+
+    FlowVar*[T] = ref object of FlowVarBase
         when T isnot void:
             v: T
-        isComplete: bool
 
     MsgTo = ref object {.inheritable, pure.}
         action: proc(m: MsgTo, chanFrom: ChannelFromPtr) {.nimcall.}
@@ -41,6 +43,7 @@ type
 
     ThreadType = Thread[ThreadProcArgs]
 
+template isComplete(v: FlowVarBase): bool = v.tp.isNil
 
 proc cleanupAux(tp: ThreadPool) =
     var msg: MsgTo
@@ -60,7 +63,6 @@ proc finalize(tp: ThreadPool) =
     tp.chanFrom.close()
 
 proc threadProc(args: ThreadProcArgs) {.thread.} =
-    var burstId = 0
     while true:
         let m = args.chanTo[].recv()
         if m.complete:
@@ -99,6 +101,7 @@ proc dispatchMessage(tp: ThreadPool, m: MsgTo) =
 proc dispatchMessageWithFlowVar[T](tp: ThreadPool, m: MsgTo): FlowVar[T] =
     result.new()
     result.tp = tp
+    result.idx = -1
     GC_ref(result)
     m.flowVar = cast[pointer](result)
     tp.dispatchMessage(m)
@@ -115,7 +118,6 @@ proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) =
             fv.tp = nil
             when T isnot void:
                 fv.v = m.v
-            fv.isComplete = true
             GC_unref(fv)
         msg.flowVar = flowVar
         c[].send(msg)
@@ -145,8 +147,7 @@ proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool): NimNode =
 
     var iParam = 0
     for i in 1 ..< procTypParams.len:
-        # msgFields.add(copyNimTree(procTypParams[i]))
-        for j in 0 ..< procTypParams[i].len - 2:
+        for j in 0 .. procTypParams[i].len - 3:
             let fieldIdent = newIdentNode($procTypParams[i][j])
             msgFields.add(newNimNode(nnkIdentDefs).add(fieldIdent, procTypParams[i][^2], newEmptyNode()))
             theCall.add(newNimNode(nnkDotExpr).add(
@@ -206,11 +207,34 @@ macro spawn*(tp: ThreadPool, e: typed{nkCall}): untyped =
 macro spawnFV*(tp: ThreadPool, e: typed{nkCall}): untyped =
     spawnAux(tp, e, true)
 
-proc nextMessage(tp: ThreadPool) =
+proc nextMessage(tp: ThreadPool): int =
     let msg = tp.chanFrom.recv()
     msg.writeResult(msg)
+    result = cast[FlowVarBase](msg.flowVar).idx
+
+proc await*(v: FlowVarBase) =
+    while not v.isComplete:
+        discard v.tp.nextMessage()
+    v.idx = 0
+
+proc awaitAny*[T](vv: openarray[FlowVar[T]]): int =
+    var foundIncomplete = false
+    var tp: ThreadPool
+    for i, v in vv:
+        if v.isComplete:
+            if v.idx == -1:
+                v.idx = 0
+                return i
+        else:
+            v.idx = i
+            foundIncomplete = true
+            tp = v.tp
+
+    if foundIncomplete:
+        tp.nextMessage()
+    else:
+        -1
 
 proc read*[T](v: FlowVar[T]): T =
-    while not v.isComplete:
-        v.tp.nextMessage()
+    await(v)
     result = v.v
