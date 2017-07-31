@@ -296,7 +296,7 @@ proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool): NimNode =
     )
 
 macro spawn*(tp: ThreadPool, e: typed{nkCall}): untyped =
-    spawnAux(tp, e, false)
+    spawnAux(tp, e, getTypeInst(e).typeKind != ntyVoid)
 
 macro spawnFV*(tp: ThreadPool, e: typed{nkCall}): untyped =
     spawnAux(tp, e, true)

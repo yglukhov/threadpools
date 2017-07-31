@@ -89,7 +89,7 @@ block:
         for i in 0 ..< randomSleepIterations:
             let s = randomGen.getNum() mod 300
             totalSleepTime1 += s
-            results[i] = p.spawnFV sleepAndReturnSomeResult(s)
+            results[i] = p.spawn sleepAndReturnSomeResult(s)
 
         randomGen = newMersenneTwister(randomSeed)
         for i in 0 ..< randomSleepIterations:
@@ -106,7 +106,7 @@ block:
         for i in 0 ..< randomSleepIterations:
             let s = randomGen.getNum() mod 300
             totalSleepTime2 += s
-            results[i] = p.spawnFV sleepAndReturnSomeResult(s)
+            results[i] = p.spawn sleepAndReturnSomeResult(s)
 
         randomGen = newMersenneTwister(randomSeed)
         for i in 0 ..< randomSleepIterations:
@@ -135,7 +135,7 @@ block:
         var results = newSeq[tps.FlowVar[int]](randomSleepIterations)
         for i in 0 ..< randomSleepIterations:
             let s = randomGen.getNum() mod 300
-            results[i] = p.spawnFV sleepAndReturnSomeResult(s)
+            results[i] = p.spawn sleepAndReturnSomeResult(s)
 
         var iResults = newSeq[int](randomSleepIterations)
 
@@ -162,7 +162,7 @@ block:
         var results = newSeq[tpc.FlowVar[int]](randomSleepIterations)
         for i in 0 ..< randomSleepIterations:
             let s = randomGen.getNum() mod 300
-            results[i] = p.spawnFV sleepAndReturnSomeResult(s)
+            results[i] = p.spawn sleepAndReturnSomeResult(s)
 
         var iResults = newSeq[int](randomSleepIterations)
 
@@ -181,3 +181,10 @@ block:
             doAssert(iResults[i] == s + 1)
 
         p.sync()
+
+
+# block:
+#     proc hello(): int =
+#         echo "hi"
+
+#     tp.spawn hello()

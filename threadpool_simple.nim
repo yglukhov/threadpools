@@ -81,11 +81,14 @@ proc startThreads(tp: ThreadPool) =
     for i in 0 ..< tp.maxThreads:
         createThread(tp.threads[i], threadProc, args)
 
-proc newThreadPool*(maxThreads: int): ThreadPool =
+proc newThreadPool*(maxThreads: int, maxMessages: int): ThreadPool =
     result.new(finalize)
     result.maxThreads = maxThreads
-    result.chanTo.open()
+    result.chanTo.open()#maxMessages)
     result.chanFrom.open()
+
+proc newThreadPool*(maxThreads: int): ThreadPool {.inline.} =
+    newThreadPool(maxThreads, maxThreads * 4)
 
 proc newThreadPool*(): ThreadPool {.inline.} =
     newThreadPool(countProcessors())
@@ -169,7 +172,7 @@ proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool): NimNode =
     ))
 
     let chanFromIdent = newIdentNode("chanFrom")
-    
+
     let dispatchProc = newProc(dispatchProcName, params = [
             newEmptyNode(),
             newNimNode(nnkIdentDefs).add(
@@ -202,7 +205,7 @@ proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool): NimNode =
     )
 
 macro spawn*(tp: ThreadPool, e: typed{nkCall}): untyped =
-    spawnAux(tp, e, false)
+    spawnAux(tp, e, getTypeInst(e).typeKind != ntyVoid)
 
 macro spawnFV*(tp: ThreadPool, e: typed{nkCall}): untyped =
     spawnAux(tp, e, true)
