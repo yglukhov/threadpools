@@ -55,7 +55,7 @@ type
 
     ThreadType = Thread[ThreadProcArgs]
 
-template isComplete(v: FlowVarBase): bool = v.tp.isNil
+template isReady*(v: FlowVarBase): bool = v.tp.isNil
 
 proc cleanupAux(tp: ThreadPool) =
     tp.taskLock.acquire()
@@ -307,7 +307,7 @@ proc nextMessage(tp: ThreadPool): int =
     result = cast[FlowVarBase](msg.flowVar).idx
 
 proc await*(v: FlowVarBase) =
-    while not v.isComplete:
+    while not v.isReady:
         discard v.tp.nextMessage()
     v.idx = 0
 
@@ -315,7 +315,7 @@ proc awaitAny*[T](vv: openarray[FlowVar[T]]): int =
     var foundIncomplete = false
     var tp: ThreadPool
     for i, v in vv:
-        if v.isComplete:
+        if v.isReady:
             if v.idx == -1:
                 v.idx = 0
                 return i
@@ -329,6 +329,12 @@ proc awaitAny*[T](vv: openarray[FlowVar[T]]): int =
     else:
         -1
 
+proc awaitAndThen*[T](fv: FlowVar[T]; action: proc (x: T)) {.deprecated, inline.} =
+    await(fv)
+    action(fv.v)
+
 proc read*[T](v: FlowVar[T]): T =
     await(v)
     result = v.v
+
+proc `^`*[T](fv: FlowVar[T]): T {.inline.} = fv.read()

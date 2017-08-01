@@ -43,7 +43,7 @@ type
 
     ThreadType = Thread[ThreadProcArgs]
 
-template isComplete(v: FlowVarBase): bool = v.tp.isNil
+template isReady*(v: FlowVarBase): bool = v.tp.isNil
 
 proc cleanupAux(tp: ThreadPool) =
     var msg: MsgTo
@@ -210,13 +210,17 @@ macro spawn*(tp: ThreadPool, e: typed{nkCall}): untyped =
 macro spawnFV*(tp: ThreadPool, e: typed{nkCall}): untyped =
     spawnAux(tp, e, true)
 
+template spawnX*(tp: ThreadPool, call: typed) =
+    if not tp.trySpawn(call):
+        call
+
 proc nextMessage(tp: ThreadPool): int =
     let msg = tp.chanFrom.recv()
     msg.writeResult(msg)
     result = cast[FlowVarBase](msg.flowVar).idx
 
 proc await*(v: FlowVarBase) =
-    while not v.isComplete:
+    while not v.isReady:
         discard v.tp.nextMessage()
     v.idx = 0
 
@@ -224,7 +228,7 @@ proc awaitAny*[T](vv: openarray[FlowVar[T]]): int =
     var foundIncomplete = false
     var tp: ThreadPool
     for i, v in vv:
-        if v.isComplete:
+        if v.isReady:
             if v.idx == -1:
                 v.idx = 0
                 return i
@@ -241,3 +245,63 @@ proc awaitAny*[T](vv: openarray[FlowVar[T]]): int =
 proc read*[T](v: FlowVar[T]): T =
     await(v)
     result = v.v
+
+proc `^`*[T](fv: FlowVar[T]): T {.inline.} = fv.read()
+
+################################################################################
+# Deprecated spawn
+const
+  MaxThreadPoolSize* = 256 ## maximal size of the thread pool. 256 threads
+                           ## should be good enough for anybody ;-)
+  MaxDistinguishedThread* = 32 ## maximal number of "distinguished" threads.
+
+type
+  ThreadId* = range[0..MaxDistinguishedThread-1]
+
+var gThreadPool: ThreadPool
+var gPinnedPools: seq[ThreadPool]
+
+proc sharedThreadPool(): ThreadPool =
+    if gThreadPool.isNil:
+        gThreadPool = newThreadPool()
+    result = gThreadPool
+
+proc pinnedPool(id: ThreadId): ThreadPool =
+    if gPinnedPools.len <= id:
+        if gPinnedPools.isNil:
+            gPinnedPools = newSeq[ThreadPool](id + 1)
+        else:
+            gPinnedPools.setLen(id + 1)
+    if gPinnedPools[id].isNil:
+        gPinnedPools[id] = newSerialThreadPool()
+    result = gPinnedPools[id]
+
+proc preferSpawn*(): bool {.deprecated.} = true
+
+template spawn*(call: typed): untyped {.deprecated.} =
+    sharedThreadPool().spawn(call)
+
+template pinnedSpawn*(id: ThreadId; call: typed): untyped {.deprecated.} =
+    pinnedPool(id).spawn(call)
+  ## always spawns a new task on the worker thread with ``id``, so that
+  ## the 'call' is **always** executed on
+  ## the thread. 'call' has to be proc call 'p(...)' where 'p'
+  ## is gcsafe and has a return type that is either 'void' or compatible
+  ## with ``FlowVar[T]``.
+
+template spawnX*(call: typed) {.deprecated.} =
+    sharedThreadPool().spawnX(call)
+  ## spawns a new task if a CPU core is ready, otherwise executes the
+  ## call in the calling thread. Usually it is advised to
+  ## use 'spawn' in order to not block the producer for an unknown
+  ## amount of time. 'call' has to be proc call 'p(...)' where 'p'
+  ## is gcsafe and has a return type that is either 'void' or compatible
+  ## with ``FlowVar[T]``.
+
+# proc parallel*(body: untyped) {.magic: "Parallel".}
+#   ## a parallel section can be used to execute a block in parallel. ``body``
+#   ## has to be in a DSL that is a particular subset of the language. Please
+#   ## refer to the manual for further information.
+
+proc sync*() {.deprecated, inline.} =
+    sharedThreadPool().sync()
