@@ -199,7 +199,7 @@ proc dispatchMessageWithFlowVar[T](tp: ThreadPool, m: MsgTo): FlowVar[T] =
     m.flowVar = cast[pointer](result)
     tp.dispatchMessage(m)
 
-proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) =
+proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) {.gcsafe.} =
     if not flowVar.isNil:
         var msg: ConcreteMsgFrom[T]
         msg.new()

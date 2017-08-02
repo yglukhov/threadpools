@@ -109,7 +109,7 @@ proc dispatchMessageWithFlowVar[T](tp: ThreadPool, m: MsgTo): FlowVar[T] =
     m.flowVar = cast[pointer](result)
     tp.dispatchMessage(m)
 
-proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) =
+proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) {.gcsafe.} =
     if not flowVar.isNil:
         var msg: ConcreteMsgFrom[T]
         msg.new()
@@ -258,8 +258,8 @@ const
 type
   ThreadId* = range[0..MaxDistinguishedThread-1]
 
-var gThreadPool: ThreadPool
-var gPinnedPools: seq[ThreadPool]
+var gThreadPool {.threadvar.}: ThreadPool
+var gPinnedPools {.threadvar.}: seq[ThreadPool]
 
 proc sharedThreadPool(): ThreadPool =
     if gThreadPool.isNil:
