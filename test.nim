@@ -183,8 +183,13 @@ block:
         p.sync()
 
 
-# block:
-#     proc hello(): int =
-#         echo "hi"
-
-#     tp.spawn hello()
+block:
+    let p = tps.newThreadPool()
+    proc sleepAndReturnSomeResult(a: int): int =
+        sleep(a)
+        return a + 1
+    let s = p.spawn sleepAndReturnSomeResult(100)
+    while not s.isReady:
+        sleep(10)
+        echo "wating..."
+    doAssert(^s == 101)

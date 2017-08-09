@@ -43,7 +43,7 @@ type
 
     ThreadType = Thread[ThreadProcArgs]
 
-template isReady*(v: FlowVarBase): bool = v.tp.isNil
+template isReadyAux(v: FlowVarBase): bool = v.tp.isNil
 
 proc cleanupAux(tp: ThreadPool) =
     var msg: MsgTo
@@ -219,8 +219,14 @@ proc nextMessage(tp: ThreadPool): int =
     msg.writeResult(msg)
     result = cast[FlowVarBase](msg.flowVar).idx
 
+proc tryNextMessage(tp: ThreadPool): bool {.inline.} =
+    let m = tp.chanFrom.tryRecv()
+    result = m.dataAvailable
+    if result:
+        m.msg.writeResult(m.msg)
+
 proc await*(v: FlowVarBase) =
-    while not v.isReady:
+    while not v.isReadyAux:
         discard v.tp.nextMessage()
     v.idx = 0
 
@@ -228,7 +234,7 @@ proc awaitAny*[T](vv: openarray[FlowVar[T]]): int =
     var foundIncomplete = false
     var tp: ThreadPool
     for i, v in vv:
-        if v.isReady:
+        if v.isReadyAux:
             if v.idx == -1:
                 v.idx = 0
                 return i
@@ -241,6 +247,12 @@ proc awaitAny*[T](vv: openarray[FlowVar[T]]): int =
         tp.nextMessage()
     else:
         -1
+
+proc isReady*(v: FlowVarBase): bool =
+    while not v.isReadyAux:
+        if not v.tp.tryNextMessage():
+            return
+    result = true
 
 proc read*[T](v: FlowVar[T]): T =
     await(v)
