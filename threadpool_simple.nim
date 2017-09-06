@@ -101,6 +101,11 @@ proc dispatchMessage(tp: ThreadPool, m: MsgTo) =
         tp.startThreads()
     tp.chanTo.send(m)
 
+proc tryDispatchMessage(tp: ThreadPool, m: MsgTo): bool =
+    if tp.threads.len == 0:
+        tp.startThreads()
+    tp.chanTo.trySend(m)
+
 proc dispatchMessageWithFlowVar[T](tp: ThreadPool, m: MsgTo): FlowVar[T] =
     result.new()
     result.tp = tp
@@ -127,7 +132,7 @@ proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) {.gcsafe.} =
 
 var i {.compileTime.} = 0
 
-proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool): NimNode =
+proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool, doTry: bool = false): NimNode =
     let msgTypeName = genSym(nskType, "MsgSub" & $i)
     inc i
     let dispatchProcName = genSym(nskProc, "dispatchProc")
@@ -195,6 +200,8 @@ proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool): NimNode =
     var dispatchCall: NimNode
     if withFlowVar:
         dispatchCall = newCall(newNimNode(nnkBracketExpr).add(bindSym"dispatchMessageWithFlowVar", procTypParams[0]), tp, msgObjConstr)
+    elif doTry:
+        dispatchCall = newCall(bindSym"tryDispatchMessage", tp, msgObjConstr)
     else:
         dispatchCall = newCall(bindSym"dispatchMessage", tp, msgObjConstr)
 
@@ -209,6 +216,9 @@ macro spawn*(tp: ThreadPool, e: typed{nkCall}): untyped =
 
 macro spawnFV*(tp: ThreadPool, e: typed{nkCall}): untyped =
     spawnAux(tp, e, true)
+
+macro trySpawn*(tp: ThreadPool, e: typed{nkCall}): untyped =
+    spawnAux(tp, e, false, true)
 
 template spawnX*(tp: ThreadPool, call: typed) =
     if not tp.trySpawn(call):
