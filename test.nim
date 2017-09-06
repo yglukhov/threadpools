@@ -193,3 +193,12 @@ block:
         sleep(10)
         echo "wating..."
     doAssert(^s == 101)
+
+block: # openarrays
+    let p = tps.newThreadPool()
+    proc sleepAndReturnSomeResult(numbers: openarray[int]): int =
+        for i in numbers:
+            result += i
+    let se = @[1, 2, 3]
+    let s = p.spawn sleepAndReturnSomeResult(se)
+    doAssert(^s == 6)

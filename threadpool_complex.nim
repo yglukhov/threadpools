@@ -240,14 +240,23 @@ proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool): NimNode =
 
     var iParam = 0
     for i in 1 ..< procTypParams.len:
-        # msgFields.add(copyNimTree(procTypParams[i]))
         for j in 0 .. procTypParams[i].len - 3:
             let fieldIdent = newIdentNode($procTypParams[i][j])
-            msgFields.add(newNimNode(nnkIdentDefs).add(fieldIdent, procTypParams[i][^2], newEmptyNode()))
+            var fieldType = procTypParams[i][^2]
+            if fieldType.typeKind == ntyOpenArray: # convert openarray to seq
+                fieldType = copyNimTree(fieldType)
+                fieldType[0] = bindSym"seq"
+
+            msgFields.add(newNimNode(nnkIdentDefs).add(fieldIdent, fieldType, newEmptyNode()))
             theCall.add(newNimNode(nnkDotExpr).add(
                 newNimNode(nnkCast).add(msgTypeName, msgParamIdent),
                 fieldIdent))
-            msgObjConstr.add(newNimNode(nnkExprColonExpr).add(fieldIdent, e[iParam + 1]))
+
+            var par = e[iParam + 1]
+            if par.typeKind == ntyOpenArray: # convert openarray to seq
+                par = newCall(bindSym"@", par)
+
+            msgObjConstr.add(newNimNode(nnkExprColonExpr).add(fieldIdent, par))
             inc iParam
 
     let msgTypDef = newNimNode(nnkTypeSection).add(newNimNode(nnkTypeDef).add(
