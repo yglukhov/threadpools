@@ -54,11 +54,14 @@ proc cleanupAux(tp: ThreadPool) =
     joinThreads(tp.threads)
 
 proc sync*(tp: ThreadPool) =
-    tp.cleanupAux()
-    tp.threads.setLen(0)
+    if not tp.threads.isNil:
+        tp.cleanupAux()
+        tp.threads.setLen(0)
 
 proc finalize(tp: ThreadPool) =
-    tp.cleanupAux()
+    if not tp.threads.isNil:
+        tp.cleanupAux()
+        GC_unref(tp.threads)
     tp.chanTo.close()
     tp.chanFrom.close()
 
@@ -74,6 +77,7 @@ proc startThreads(tp: ThreadPool) =
     assert(tp.threads.len == 0)
     if tp.threads.isNil:
         tp.threads = newSeq[ThreadType](tp.maxThreads)
+        GC_ref(tp.threads)
     else:
         tp.threads.setLen(tp.maxThreads)
 
