@@ -1,5 +1,5 @@
-import threadpool_simple as tps
-import threadpool_complex as tpc
+import threadpools/simple as tps
+import threadpools/complex as tpc
 import threadpool as tp
 import times, os, mersenne
 
