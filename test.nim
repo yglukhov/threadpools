@@ -1,7 +1,7 @@
 import threadpool_simple as tps
 import threadpool_complex as tpc
 import threadpool as tp
-import times, os, mersenne
+import times, os, random
 
 template bench(name: string, body: untyped) =
     proc runBench() {.gensym.} =
@@ -42,7 +42,7 @@ block:
         sleep(a)
 
     const randomSeed = 12345
-    var randomGen = newMersenneTwister(randomSeed)
+    var randomGen = initRand(randomSeed)
 
     const randomSleepIterations = 100
 
@@ -52,17 +52,17 @@ block:
     bench "complex pool - sleepForTime":
         let p = tpc.newThreadPool()
         for i in 0 ..< randomSleepIterations:
-            let s = randomGen.getNum() mod 300
+            let s = randomGen.rand(300)
             totalSleepTime1 += s
             p.spawn sleepForTime(s)
         p.sync()
 
-    randomGen = newMersenneTwister(randomSeed)
+    randomGen = initRand(randomSeed)
 
     bench "simple pool - sleepForTime":
         let p = tps.newThreadPool()
         for i in 0 ..< randomSleepIterations:
-            let s = randomGen.getNum() mod 300
+            let s = randomGen.rand(300)
             totalSleepTime2 += s
             p.spawn sleepForTime(s)
         p.sync()
@@ -76,7 +76,7 @@ block:
         return a + 1
 
     const randomSeed = 54312
-    var randomGen = newMersenneTwister(randomSeed)
+    var randomGen = initRand(randomSeed)
 
     const randomSleepIterations = 100
 
@@ -87,30 +87,30 @@ block:
         let p = tpc.newThreadPool()
         var results = newSeq[tpc.FlowVar[int]](randomSleepIterations)
         for i in 0 ..< randomSleepIterations:
-            let s = randomGen.getNum() mod 300
+            let s = randomGen.rand(300)
             totalSleepTime1 += s
             results[i] = p.spawn sleepAndReturnSomeResult(s)
 
-        randomGen = newMersenneTwister(randomSeed)
+        randomGen = initRand(randomSeed)
         for i in 0 ..< randomSleepIterations:
-            let s = randomGen.getNum() mod 300
+            let s = randomGen.rand(300)
             doAssert(results[i].read() == s + 1)
 
         p.sync()
 
-    randomGen = newMersenneTwister(randomSeed)
+    randomGen = initRand(randomSeed)
 
     bench "simple pool - sleepAndReturnSomeResult":
         let p = tps.newThreadPool()
         var results = newSeq[tps.FlowVar[int]](randomSleepIterations)
         for i in 0 ..< randomSleepIterations:
-            let s = randomGen.getNum() mod 300
+            let s = randomGen.rand(300)
             totalSleepTime2 += s
             results[i] = p.spawn sleepAndReturnSomeResult(s)
 
-        randomGen = newMersenneTwister(randomSeed)
+        randomGen = initRand(randomSeed)
         for i in 0 ..< randomSleepIterations:
-            let s = randomGen.getNum() mod 300
+            let s = randomGen.rand(300)
             doAssert(results[i].read() == s + 1)
 
         p.sync()
@@ -126,7 +126,7 @@ block:
         return a + 1
 
     const randomSeed = 83729
-    var randomGen = newMersenneTwister(randomSeed)
+    var randomGen = initRand(randomSeed)
 
     const randomSleepIterations = 100
 
@@ -134,7 +134,7 @@ block:
         let p = tps.newThreadPool()
         var results = newSeq[tps.FlowVar[int]](randomSleepIterations)
         for i in 0 ..< randomSleepIterations:
-            let s = randomGen.getNum() mod 300
+            let s = randomGen.rand(300)
             results[i] = p.spawn sleepAndReturnSomeResult(s)
 
         var iResults = newSeq[int](randomSleepIterations)
@@ -148,20 +148,20 @@ block:
                 break
             iResults[i] = results[i].read()
 
-        randomGen = newMersenneTwister(randomSeed)
+        randomGen = initRand(randomSeed)
         for i in 0 ..< randomSleepIterations:
-            let s = randomGen.getNum() mod 300
+            let s = randomGen.rand(300)
             doAssert(iResults[i] == s + 1)
 
         p.sync()
 
-    randomGen = newMersenneTwister(randomSeed)
+    randomGen = initRand(randomSeed)
 
     bench "complex pool - awaitAny":
         let p = tpc.newThreadPool()
         var results = newSeq[tpc.FlowVar[int]](randomSleepIterations)
         for i in 0 ..< randomSleepIterations:
-            let s = randomGen.getNum() mod 300
+            let s = randomGen.rand(300)
             results[i] = p.spawn sleepAndReturnSomeResult(s)
 
         var iResults = newSeq[int](randomSleepIterations)
@@ -175,9 +175,9 @@ block:
                 break
             iResults[i] = results[i].read()
 
-        randomGen = newMersenneTwister(randomSeed)
+        randomGen = initRand(randomSeed)
         for i in 0 ..< randomSleepIterations:
-            let s = randomGen.getNum() mod 300
+            let s = randomGen.rand(300)
             doAssert(iResults[i] == s + 1)
 
         p.sync()
