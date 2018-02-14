@@ -132,7 +132,6 @@ proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) {.gcsafe.} =
         c[].send(msg)
 
 macro partial(e: typed{nkCall}): untyped =
-    result = newNimNode(nnkStmtList)
     let par = newNimNode(nnkPar)
     proc skipHidden(n: NimNode): NimNode =
         result = n
@@ -141,30 +140,24 @@ macro partial(e: typed{nkCall}): untyped =
 
     for i in 1 ..< e.len: par.add(skipHidden(e[i]))
     par.add(newLit(0))
+
     let argsIdent = newIdentNode("args")
-    result.add(newNimNode(nnkLetSection).add(newIdentDefs(argsIdent, newEmptyNode(), par)))
 
     let transformedCall = newCall(e[0])
     for i in 1 ..< e.len:
         transformedCall.add(newNimNode(nnkBracketExpr).add(argsIdent, newLit(i - 1)))
 
-    result.add(newProc(params = [newIdentNode("auto")], body = transformedCall, procType = nnkLambda))
+    let resultProc = newProc(params = [newIdentNode("auto")], body = transformedCall, procType = nnkLambda)
+
+    let wrapperIdent = newIdentNode("tmpWrapper")
+
+    let wrapperProc = newProc(wrapperIdent, params = [newIdentNode("auto"), newIdentDefs(argsIdent, newIdentNode("any"))], body = resultProc)
+
+    result = newNimNode(nnkStmtList).add(
+        wrapperProc,
+        newCall(wrapperIdent, par))
 
     echo repr result
-
-    # for param in e.:
-    #     case param.kind
-    #     of nnkIdentDefs:
-    #       let identType = param[param.len-2]
-    #       for i in 0..<param.len-2:
-    #         result.add(newIdentDefs(param[i], identType))
-    #     else:
-    #       result.add(param)
-
-
-    # result = quote do:
-    #     let args = ()
-    #     proc(): auto = e
 
 template spawnFV*(tp: ThreadPool, e: typed{nkCall}): auto =
     when compiles(e isnot void):
