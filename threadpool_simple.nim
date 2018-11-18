@@ -23,13 +23,8 @@ type
         flowVar: pointer
         complete: bool
 
-    MsgFrom = ref object {.inheritable, pure.}
-        writeResult: proc(m: MsgFrom) {.nimcall.}
-        flowVar: pointer
-
-    ConcreteMsgFrom[T] = ref object of MsgFrom
-        when T isnot void:
-            v: T
+    MsgFrom = object
+        writeResult: proc(): int
 
     ChannelTo = Channel[MsgTo]
     ChannelFrom = Channel[MsgFrom]
@@ -52,13 +47,14 @@ proc cleanupAux(tp: ThreadPool) =
         tp.chanTo.send(msg)
     joinThreads(tp.threads)
 
+# XXX: Do the GC_ref GC_unref correctly.
 proc sync*(tp: ThreadPool) =
-    if not tp.threads.isNil:
+    if tp.threads.len != 0:
         tp.cleanupAux()
         tp.threads.setLen(0)
 
 proc finalize(tp: ThreadPool) =
-    if not tp.threads.isNil:
+    if tp.threads.len != 0:
         tp.cleanupAux()
         GC_unref(tp.threads)
     tp.chanTo.close()
@@ -74,7 +70,7 @@ proc threadProc(args: ThreadProcArgs) {.thread.} =
 
 proc startThreads(tp: ThreadPool) =
     assert(tp.threads.len == 0)
-    if tp.threads.isNil:
+    if tp.threads.len == 0:
         tp.threads = newSeq[ThreadType](tp.maxThreads)
         GC_ref(tp.threads)
     else:
@@ -117,18 +113,14 @@ proc newFlowVar[T](tp: ThreadPool): FlowVar[T] =
 
 proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) {.gcsafe.} =
     if not flowVar.isNil:
-        var msg: ConcreteMsgFrom[T]
-        msg.new()
-        when T isnot void:
-            msg.v = v
-        msg.writeResult = proc(m: MsgFrom) {.nimcall.} =
-            let m = cast[ConcreteMsgFrom[T]](m)
-            let fv = cast[FlowVar[T]](m.flowVar)
+        var msg: MsgFrom
+        msg.writeResult = proc(): int =
+            let fv = cast[FlowVar[T]](flowVar)
             fv.tp = nil
             when T isnot void:
-                fv.v = m.v
+                fv.v = v
             GC_unref(fv)
-        msg.flowVar = flowVar
+            result = fv.idx
         c[].send(msg)
 
 macro partial(e: typed{nkCall}): untyped =
@@ -157,7 +149,17 @@ macro partial(e: typed{nkCall}): untyped =
         wrapperProc,
         newCall(wrapperIdent, par))
 
-    echo repr result
+    # echo repr result
+
+template setupAction(msg: MsgTo, e: untyped, body: untyped) =
+    block:
+        proc setup(m: var MsgTo, pe: proc) {.inline, nimcall.} =
+            m.action = proc(flowVar: pointer, chanFrom: ChannelFromPtr) =
+                let pe {.inject.} = pe
+                let chanFrom {.inject.} = chanFrom
+                let flowVar {.inject.} = flowVar
+                body
+        setup(msg, partial(e))
 
 template spawnFV*(tp: ThreadPool, e: typed{nkCall}): auto =
     when compiles(e isnot void):
@@ -166,8 +168,7 @@ template spawnFV*(tp: ThreadPool, e: typed{nkCall}): auto =
         type RetType = void
 
     var m: MsgTo
-    let pe = partial(e)
-    m.action = proc(flowVar: pointer, chanFrom: ChannelFromPtr) =
+    setupAction(m, e):
         sendBack(pe(), chanFrom, flowVar)
     let fv = newFlowVar[RetType](tp)
     m.flowVar = cast[pointer](fv)
@@ -180,16 +181,14 @@ template spawn*(tp: ThreadPool, e: typed{nkCall}): untyped =
         spawnFV(tp, e)
     else:
         var m: MsgTo
-        let pe = partial(e)
-        m.action = proc(flowVar: pointer, chanFrom: ChannelFromPtr) =
+        setupAction(m, e):
             pe()
         mixin dispatchMessage
         tp.dispatchMessage(m)
 
 template trySpawn*(tp: ThreadPool, e: typed{nkCall}): bool =
     var m: MsgTo
-    let pe = partial(e)
-    m.action = proc(flowVar: pointer, chanFrom: ChannelFromPtr) =
+    setupAction(m, e):
         pe()
     mixin tryDispatchMessage
     tp.tryDispatchMessage(m)
@@ -200,14 +199,13 @@ template spawnX*(tp: ThreadPool, call: typed) =
 
 proc nextMessage(tp: ThreadPool): int =
     let msg = tp.chanFrom.recv()
-    msg.writeResult(msg)
-    result = cast[FlowVarBase](msg.flowVar).idx
+    result = msg.writeResult()
 
 proc tryNextMessage(tp: ThreadPool): bool {.inline.} =
     let m = tp.chanFrom.tryRecv()
     result = m.dataAvailable
     if result:
-        m.msg.writeResult(m.msg)
+        discard m.msg.writeResult()
 
 proc await*(v: FlowVarBase) =
     while not v.isReadyAux:
@@ -264,10 +262,7 @@ proc sharedThreadPool(): ThreadPool =
 
 proc pinnedPool(id: ThreadId): ThreadPool =
     if gPinnedPools.len <= id:
-        if gPinnedPools.isNil:
-            gPinnedPools = newSeq[ThreadPool](id + 1)
-        else:
-            gPinnedPools.setLen(id + 1)
+        gPinnedPools.setLen(id + 1)
     if gPinnedPools[id].isNil:
         gPinnedPools[id] = newSerialThreadPool()
     result = gPinnedPools[id]
