@@ -123,7 +123,7 @@ proc sendBack[T](v: T, c: ChannelFromPtr, flowVar: pointer) {.gcsafe.} =
             result = fv.idx
         c[].send(msg)
 
-macro partial(e: typed{nkCall}): untyped =
+macro partial(e: typed): untyped =
     let par = newNimNode(nnkPar)
     proc skipHidden(n: NimNode): NimNode =
         result = n
@@ -161,7 +161,7 @@ template setupAction(msg: MsgTo, e: untyped, body: untyped) =
                 body
         setup(msg, partial(e))
 
-template spawnFV*(tp: ThreadPool, e: typed{nkCall}): auto =
+template spawnFV*(tp: ThreadPool, e: typed{nkCall, nkCommand}): auto =
     when compiles(e isnot void):
         type RetType = type(e)
     else:
@@ -176,7 +176,7 @@ template spawnFV*(tp: ThreadPool, e: typed{nkCall}): auto =
     tp.dispatchMessage(m)
     fv
 
-template spawn*(tp: ThreadPool, e: typed{nkCall}): untyped =
+template spawn*(tp: ThreadPool, e: typed{nkCall, nkCommand}): untyped =
     when compiles(e isnot void):
         spawnFV(tp, e)
     else:
@@ -186,7 +186,7 @@ template spawn*(tp: ThreadPool, e: typed{nkCall}): untyped =
         mixin dispatchMessage
         tp.dispatchMessage(m)
 
-template trySpawn*(tp: ThreadPool, e: typed{nkCall}): bool =
+template trySpawn*(tp: ThreadPool, e: typed{nkCall, nkCommand}): bool =
     var m: MsgTo
     setupAction(m, e):
         pe()
