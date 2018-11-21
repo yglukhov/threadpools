@@ -54,7 +54,7 @@ block:
         for i in 0 ..< randomSleepIterations:
             let s = randomGen.rand(300)
             totalSleepTime1 += s
-            p.spawn sleepForTime(s)
+            p.spawn sleepForTime s
         p.sync()
 
     randomGen = initRand(randomSeed)
@@ -64,7 +64,7 @@ block:
         for i in 0 ..< randomSleepIterations:
             let s = randomGen.rand(300)
             totalSleepTime2 += s
-            p.spawn sleepForTime(s)
+            p.spawn sleepForTime s
         p.sync()
 
     assert(totalSleepTime1 == totalSleepTime2)

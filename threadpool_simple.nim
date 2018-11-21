@@ -161,7 +161,7 @@ template setupAction(msg: MsgTo, e: untyped, body: untyped) =
                 body
         setup(msg, partial(e))
 
-template spawnFV*(tp: ThreadPool, e: typed{nkCall, nkCommand}): auto =
+template spawnFV*(tp: ThreadPool, e: typed{nkCall | nkCommand}): auto =
     when compiles(e isnot void):
         type RetType = type(e)
     else:
@@ -176,7 +176,7 @@ template spawnFV*(tp: ThreadPool, e: typed{nkCall, nkCommand}): auto =
     tp.dispatchMessage(m)
     fv
 
-template spawn*(tp: ThreadPool, e: typed{nkCall, nkCommand}): untyped =
+template spawn*(tp: ThreadPool, e: typed{nkCall | nkCommand}): untyped =
     when compiles(e isnot void):
         spawnFV(tp, e)
     else:
@@ -186,7 +186,7 @@ template spawn*(tp: ThreadPool, e: typed{nkCall, nkCommand}): untyped =
         mixin dispatchMessage
         tp.dispatchMessage(m)
 
-template trySpawn*(tp: ThreadPool, e: typed{nkCall, nkCommand}): bool =
+template trySpawn*(tp: ThreadPool, e: typed{nkCall | nkCommand}): bool =
     var m: MsgTo
     setupAction(m, e):
         pe()

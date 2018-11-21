@@ -41,7 +41,7 @@ type
     ChannelToPtr = ptr ChannelTo
     ChannelFromPtr = ptr ChannelFrom
 
-    ChannelsArray {.unchecked.} = array[0..0, ChannelTo]
+    ChannelsArray = UncheckedArray[ChannelTo]
 
     ThreadProcArgs = object
         chansTo: seq[ChannelToPtr]
@@ -111,7 +111,7 @@ proc threadProc(args: ThreadProcArgs) {.thread.} =
                 success = true
                 break
             else:
-                threadToStealFrom = random(args.totalThreads)
+                threadToStealFrom = rand(args.totalThreads - 1)
         if not success:
             args.taskLock[].acquire()
             let m = args.chansTo[args.thisThread][].tryRecv()
@@ -134,12 +134,8 @@ proc threadProc(args: ThreadProcArgs) {.thread.} =
 
 proc startThreads(tp: ThreadPool) =
     assert(tp.threads.len == 0)
-    if tp.threads.isNil:
-        tp.threads = newSeq[ThreadType](tp.maxThreads)
-        tp.chansTo = newSeq[ChannelTo](tp.maxThreads)
-    else:
-        tp.threads.setLen(tp.maxThreads)
-        tp.chansTo.setLen(tp.maxThreads)
+    tp.threads.setLen(tp.maxThreads)
+    tp.chansTo.setLen(tp.maxThreads)
 
     var args = ThreadProcArgs(chanFrom: addr tp.chanFrom, totalThreads: tp.maxThreads,
         taskCond: addr tp.taskCond, taskLock: addr tp.taskLock, isComplete: addr tp.complete,
@@ -304,10 +300,10 @@ proc spawnAux(tp: NimNode, e: NimNode, withFlowVar: bool): NimNode =
         dispatchCall
     )
 
-macro spawn*(tp: ThreadPool, e: typed{nkCall}): untyped =
+macro spawn*(tp: ThreadPool, e: typed{nkCall | nkCommand}): untyped =
     spawnAux(tp, e, getTypeInst(e).typeKind != ntyVoid)
 
-macro spawnFV*(tp: ThreadPool, e: typed{nkCall}): untyped =
+macro spawnFV*(tp: ThreadPool, e: typed{nkCall | nkCommand}): untyped =
     spawnAux(tp, e, true)
 
 proc nextMessage(tp: ThreadPool): int =
