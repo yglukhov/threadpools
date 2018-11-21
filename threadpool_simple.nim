@@ -140,6 +140,7 @@ macro partial(e: typed): untyped =
         transformedCall.add(newNimNode(nnkBracketExpr).add(argsIdent, newLit(i - 1)))
 
     let resultProc = newProc(params = [newIdentNode("auto")], body = transformedCall, procType = nnkLambda)
+    resultProc.addPragma(newIdentNode("gcsafe"))
 
     let wrapperIdent = newIdentNode("tmpWrapper")
 
