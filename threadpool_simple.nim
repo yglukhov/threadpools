@@ -19,7 +19,7 @@ type
             v: T
 
     MsgTo = object
-        action: proc(flowVar: pointer, chanFrom: ChannelFromPtr)
+        action: proc(flowVar: pointer, chanFrom: ChannelFromPtr) {.gcsafe.}
         flowVar: pointer
         complete: bool
 
