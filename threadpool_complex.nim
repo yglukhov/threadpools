@@ -23,7 +23,7 @@ type
             v: T
 
     MsgTo = ref object {.inheritable, pure.}
-        action: proc(m: MsgTo, chanFrom: ChannelFromPtr) {.nimcall.}
+        action: proc(m: MsgTo, chanFrom: ChannelFromPtr) {.nimcall, gcsafe.}
         flowVar: pointer
         complete: bool
 
