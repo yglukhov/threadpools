@@ -96,7 +96,7 @@ proc threadProc(args: ThreadProcArgs) {.thread.} =
                 break
             m.action(m, args.chanFrom)
     else:
-        randomize(args.thisThread)
+        randomize(args.thisThread + 1)
 
     var hits = 0
     var total = 0

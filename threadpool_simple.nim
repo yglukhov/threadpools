@@ -21,7 +21,6 @@ type
     MsgTo = object
         action: proc(flowVar: pointer, chanFrom: ChannelFromPtr) {.gcsafe.}
         flowVar: pointer
-        complete: bool
 
     MsgFrom = object
         writeResult: proc(): int
@@ -42,7 +41,6 @@ template isReadyAux(v: FlowVarBase): bool = v.tp.isNil
 
 proc cleanupAux(tp: ThreadPool) =
     var msg: MsgTo
-    msg.complete = true
     for i in 0 ..< tp.threads.len:
         tp.chanTo.send(msg)
     joinThreads(tp.threads)
@@ -63,7 +61,7 @@ proc finalize(tp: ThreadPool) =
 proc threadProc(args: ThreadProcArgs) {.thread.} =
     while true:
         let m = args.chanTo[].recv()
-        if m.complete:
+        if m.action.isNil:
             break
         m.action(m.flowVar, args.chanFrom)
     deallocHeap(true, false)
