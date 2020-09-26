@@ -23,7 +23,7 @@ type
         flowVar: pointer
 
     MsgFrom = object
-        writeResult: proc(): int
+        writeResult: proc(): int {.gcsafe.}
 
     ChannelTo = Channel[MsgTo]
     ChannelFrom = Channel[MsgFrom]

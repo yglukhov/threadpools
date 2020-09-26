@@ -28,7 +28,7 @@ type
         complete: bool
 
     MsgFrom {.inheritable, pure.} = ref object
-        writeResult: proc(m: MsgFrom) {.nimcall.}
+        writeResult: proc(m: MsgFrom) {.nimcall, gcsafe.}
         flowVar: pointer
 
     ConcreteMsgFrom[T] = ref object of MsgFrom
