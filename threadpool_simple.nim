@@ -10,7 +10,7 @@ type
         threads: seq[ThreadType]
         maxThreads: int
 
-    FlowVarBase = ref object {.inheritable, pure.}
+    FlowVarBase {.inheritable, pure.} = ref object
         tp: ThreadPool
         idx: int # -1 if was never awaited
 
@@ -23,7 +23,7 @@ type
         flowVar: pointer
 
     MsgFrom = object
-        writeResult: proc(): int
+        writeResult: proc(): int {.gcsafe.}
 
     ChannelTo = Channel[MsgTo]
     ChannelFrom = Channel[MsgFrom]
@@ -158,7 +158,9 @@ template setupAction(msg: MsgTo, e: untyped, body: untyped) =
                 let chanFrom {.inject.} = chanFrom
                 let flowVar {.inject.} = flowVar
                 body
+        {.push hints:off.} # [XDeclaredButNotUsed]
         setup(msg, partial(e))
+        {.pop.}
 
 template spawnFV*(tp: ThreadPool, e: typed{nkCall | nkCommand}): auto =
     when compiles(e isnot void):

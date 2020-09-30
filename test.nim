@@ -1,6 +1,5 @@
 import threadpool_simple as tps
 import threadpool_complex as tpc
-import threadpool as tp
 import times, os, random
 
 template bench(name: string, body: untyped) =
@@ -119,8 +118,6 @@ block:
 
 
 block:
-    let p = tps.newThreadPool()
-
     proc sleepAndReturnSomeResult(a: int): int =
         sleep(a)
         return a + 1

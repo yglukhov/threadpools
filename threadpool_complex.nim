@@ -14,7 +14,7 @@ type
         complete: bool
         numWaitingThreads: int
 
-    FlowVarBase = ref object {.inheritable, pure.}
+    FlowVarBase {.inheritable, pure.} = ref object
         tp: ThreadPool
         idx: int # -1 if was never awaited
 
@@ -22,13 +22,13 @@ type
         when T isnot void:
             v: T
 
-    MsgTo = ref object {.inheritable, pure.}
+    MsgTo {.inheritable, pure.} = ref object
         action: proc(m: MsgTo, chanFrom: ChannelFromPtr) {.nimcall, gcsafe.}
         flowVar: pointer
         complete: bool
 
-    MsgFrom = ref object {.inheritable, pure.}
-        writeResult: proc(m: MsgFrom) {.nimcall.}
+    MsgFrom {.inheritable, pure.} = ref object
+        writeResult: proc(m: MsgFrom) {.nimcall, gcsafe.}
         flowVar: pointer
 
     ConcreteMsgFrom[T] = ref object of MsgFrom
@@ -40,8 +40,6 @@ type
 
     ChannelToPtr = ptr ChannelTo
     ChannelFromPtr = ptr ChannelFrom
-
-    ChannelsArray = UncheckedArray[ChannelTo]
 
     ThreadProcArgs = object
         chansTo: seq[ChannelToPtr]
