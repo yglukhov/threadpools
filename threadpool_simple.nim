@@ -150,10 +150,13 @@ macro partial(e: typed): untyped =
 
     # echo repr result
 
+proc setAction(m: var MsgTo, a: proc(flowVar: pointer, chanFrom: ChannelFromPtr) {.gcsafe.}) {.inline.} =
+  m.action = a
+
 template setupAction(msg: MsgTo, e: untyped, body: untyped) =
     block:
         proc setup(m: var MsgTo, pe: proc) {.inline, nimcall.} =
-            m.action = proc(flowVar: pointer, chanFrom: ChannelFromPtr) =
+            setAction(m) do(flowVar: pointer, chanFrom: ChannelFromPtr):
                 let pe {.inject.} = pe
                 let chanFrom {.inject.} = chanFrom
                 let flowVar {.inject.} = flowVar
@@ -271,7 +274,7 @@ proc pinnedPool(id: ThreadId): ThreadPool =
 proc preferSpawn*(): bool {.deprecated.} = true
 
 template spawn*(call: typed): untyped {.deprecated.} =
-    sharedThreadPool().spawn(call)
+    spawn(sharedThreadPool(), call)
 
 template pinnedSpawn*(id: ThreadId; call: typed): untyped {.deprecated.} =
     pinnedPool(id).spawn(call)
